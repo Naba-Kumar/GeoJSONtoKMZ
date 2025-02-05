@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GeoJSON to KMZ Converter</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.7.1/jszip.min.js"></script>
+</head>
+<body>
+    <h1>GeoJSON to KMZ Converter</h1>
+
+    <!-- File input to upload GeoJSON file -->
+    <input type="file" id="geojsonFile" accept=".geojson" />
+    <br />
+    
+    <!-- Input to enter the label field name -->
+    <label for="labelField">Enter the label field name:</label>
+    <input type="text" id="labelField" placeholder="e.g., name" />
+    <br />
+    
+    <button onclick="processGeoJSON()">Generate KMZ</button>
+
+    <script>
+        // Function to convert GeoJSON to KML with labels for all types of geometries
+        function geoJSONToKML(geoJSON, labelField) {
+            let kml = `<?xml version="1.0" encoding="UTF-8"?>
+            <kml xmlns="http://www.opengis.net/kml/2.2">
+                <Document>
+                    <!-- Define styles -->
+                    <Style id="polygonStyle">
+                        <LineStyle>
+                            <color>ffff00ff</color>  <!-- Yellow outline -->
+                            <width>3</width>         <!-- Outline width -->
+                        </LineStyle>
+                        <PolyStyle>
+                            <color>7f00ff00</color>  <!-- Green transparent fill -->
+                        </PolyStyle>
+                    </Style>
+                    <Style id="labelStyle">
+                        <LabelStyle>
+                            <color>ff0000ff</color>  <!-- Red label -->
+                            <scale>1.0</scale>       <!-- Label scale -->
+                        </LabelStyle>
+                    </Style>`;
+
+            // Convert GeoJSON Features to KML
+            geoJSON.features.forEach(function (feature) {
+                let label = feature.properties[labelField] || 'No label provided';
+                
+                if (feature.geometry.type === 'Point') {
+                    kml += `
+                    <Placemark>
+                        <name>${label}</name>  
+                        <styleUrl>#labelStyle</styleUrl>
+                        <Point>
+                            <coordinates>${feature.geometry.coordinates[0]},${feature.geometry.coordinates[1]},0</coordinates>
+                        </Point>
+                    </Placemark>`;
+                } else if (feature.geometry.type === 'Polygon') {
+                    let coordinates = feature.geometry.coordinates[0].map(coord => `${coord[0]},${coord[1]},0`).join(' ');
+                    kml += `
+                    <Placemark>
+                        <name>${label}</name>
+                        <styleUrl>#polygonStyle</styleUrl>
+                        <Polygon>
+                            <outerBoundaryIs>
+                                <LinearRing>
+                                    <coordinates>${coordinates}</coordinates>
+                                </LinearRing>
+                            </outerBoundaryIs>
+                        </Polygon>
+                    </Placemark>`;
+                } else if (feature.geometry.type === 'MultiPolygon') {
+                    feature.geometry.coordinates.forEach(polygonCoords => {
+                        let coordinates = polygonCoords[0].map(coord => `${coord[0]},${coord[1]},0`).join(' ');
+                        kml += `
+                    <Placemark>
+                        <name>${label}</name>
+                        <styleUrl>#polygonStyle</styleUrl>
+                        <Polygon>
+                            <outerBoundaryIs>
+                                <LinearRing>
+                                    <coordinates>${coordinates}</coordinates>
+                                </LinearRing>
+                            </outerBoundaryIs>
+                        </Polygon>
+                    </Placemark>`;
+                    });
+                }
+            });
+
+            kml += `</Document></kml>`;
+            return kml;
+        }
+
+        // Function to convert KML to KMZ (zip the KML into a KMZ)
+        function convertKMLToKMZ(kml) {
+            const zip = new JSZip();
+            zip.file("document.kml", kml);
+            zip.generateAsync({ type: "blob" })
+                .then(function (content) {
+                    const link = document.createElement("a");
+                    link.href = URL.createObjectURL(content);
+                    link.download = "output.kmz";
+                    link.click();
+                });
+        }
+
+        // Function to process the GeoJSON file and generate KMZ
+        function processGeoJSON() {
+            const fileInput = document.getElementById("geojsonFile");
+            const labelFieldInput = document.getElementById("labelField").value;
+
+            // Ensure user has uploaded a file and entered a label field
+            if (!fileInput.files.length || !labelFieldInput) {
+                alert("Please upload a GeoJSON file and specify the label field!");
+                return;
+            }
+
+            const file = fileInput.files[0];
+            
+            // Read the uploaded file as text
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                try {
+                    const geoJSON = JSON.parse(event.target.result);
+                    
+                    // Validate GeoJSON structure
+                    if (geoJSON.type !== "FeatureCollection" || !Array.isArray(geoJSON.features)) {
+                        alert("Invalid GeoJSON structure!");
+                        return;
+                    }
+
+                    // Convert the GeoJSON to KML
+                    const kml = geoJSONToKML(geoJSON, labelFieldInput);
+
+                    // Convert KML to KMZ and trigger download
+                    convertKMLToKMZ(kml);
+                } catch (error) {
+                    alert("Failed to parse GeoJSON file: " + error.message);
+                }
+            };
+            
+            reader.readAsText(file);
+        }
+    </script>
+</body>
+</html>
