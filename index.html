@@ -3,146 +3,141 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GeoJSON to KMZ Converter</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.7.1/jszip.min.js"></script>
+    <title>GeoJSON and Shapefile to KMZ Converter</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.6.0/jszip.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/geocodezip/geoxml3/polys/geoxml3.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/shapefile@3.4.1/dist/shapefile.min.js"></script>
 </head>
 <body>
-    <h1>GeoJSON to KMZ Converter</h1>
-
-    <!-- File input to upload GeoJSON file -->
-    <input type="file" id="geojsonFile" accept=".geojson" />
-    <br />
-    
-    
-    <!-- Input to enter the label field name -->
-    <label for="labelField">Enter the label field name:</label>
-    <input type="text" id="labelField" placeholder="e.g., name" />
-    <br />
-    
-    <button onclick="processGeoJSON()">Generate KMZ</button>
+    <div class="container mt-5">
+        <h1 class="text-center mb-4">GeoJSON and Shapefile to KMZ Converter</h1>
+        <div class="form-group">
+            <label for="fileInput">Select a GeoJSON or Shapefile:</label>
+            <input type="file" id="fileInput" class="form-control-file" accept=".geojson,application/json,.shp,.dbf,.prj">
+        </div>
+        <button onclick="convertFileToKmz()" class="btn btn-primary btn-block">Convert to KMZ</button>
+        <a id="downloadLink" class="btn btn-success btn-block mt-3" style="display: none;">Download KMZ</a>
+    </div>
 
     <script>
-        // Function to convert GeoJSON to KML with labels for all types of geometries
-        function geoJSONToKML(geoJSON, labelField) {
-            let kml = `<?xml version="1.0" encoding="UTF-8"?>
-            <kml xmlns="http://www.opengis.net/kml/2.2">
-                <Document>
-                    <!-- Define styles -->
-                    <Style id="polygonStyle">
-                        <LineStyle>
-                            <color>ffff00ff</color>  <!-- Yellow outline -->
-                            <width>3</width>         <!-- Outline width -->
-                        </LineStyle>
-                        <PolyStyle>
-                            <color>7f00ff00</color>  <!-- Green transparent fill -->
-                        </PolyStyle>
-                    </Style>
-                    <Style id="labelStyle">
-                        <LabelStyle>
-                            <color>ff0000ff</color>  <!-- Red label -->
-                            <scale>1.0</scale>       <!-- Label scale -->
-                        </LabelStyle>
-                    </Style>`;
-
-            // Convert GeoJSON Features to KML
-            geoJSON.features.forEach(function (feature) {
-                let label = feature.properties[labelField] || 'No label provided';
-                
-                if (feature.geometry.type === 'Point') {
-                    kml += `
-                    <Placemark>
-                        <name>${label}</name>  
-                        <styleUrl>#labelStyle</styleUrl>
-                        <Point>
-                            <coordinates>${feature.geometry.coordinates[0]},${feature.geometry.coordinates[1]},0</coordinates>
-                        </Point>
-                    </Placemark>`;
-                } else if (feature.geometry.type === 'Polygon') {
-                    let coordinates = feature.geometry.coordinates[0].map(coord => `${coord[0]},${coord[1]},0`).join(' ');
-                    kml += `
-                    <Placemark>
-                        <name>${label}</name>
-                        <styleUrl>#polygonStyle</styleUrl>
-                        <Polygon>
-                            <outerBoundaryIs>
-                                <LinearRing>
-                                    <coordinates>${coordinates}</coordinates>
-                                </LinearRing>
-                            </outerBoundaryIs>
-                        </Polygon>
-                    </Placemark>`;
-                } else if (feature.geometry.type === 'MultiPolygon') {
-                    feature.geometry.coordinates.forEach(polygonCoords => {
-                        let coordinates = polygonCoords[0].map(coord => `${coord[0]},${coord[1]},0`).join(' ');
-                        kml += `
-                    <Placemark>
-                        <name>${label}</name>
-                        <styleUrl>#polygonStyle</styleUrl>
-                        <Polygon>
-                            <outerBoundaryIs>
-                                <LinearRing>
-                                    <coordinates>${coordinates}</coordinates>
-                                </LinearRing>
-                            </outerBoundaryIs>
-                        </Polygon>
-                    </Placemark>`;
-                    });
-                }
-            });
-
-            kml += `</Document></kml>`;
-            return kml;
-        }
-
-        // Function to convert KML to KMZ (zip the KML into a KMZ)
-        function convertKMLToKMZ(kml) {
-            const zip = new JSZip();
-            zip.file("document.kml", kml);
-            zip.generateAsync({ type: "blob" })
-                .then(function (content) {
-                    const link = document.createElement("a");
-                    link.href = URL.createObjectURL(content);
-                    link.download = "output.kmz";
-                    link.click();
-                });
-        }
-
-        // Function to process the GeoJSON file and generate KMZ
-        function processGeoJSON() {
-            const fileInput = document.getElementById("geojsonFile");
-            const labelFieldInput = document.getElementById("labelField").value;
-
-            // Ensure user has uploaded a file and entered a label field
-            if (!fileInput.files.length || !labelFieldInput) {
-                alert("Please upload a GeoJSON file and specify the label field!");
+        function convertFileToKmz() {
+            const input = document.getElementById('fileInput').files[0];
+            if (!input) {
+                alert('Please select a file.');
                 return;
             }
 
-            const file = fileInput.files[0];
-            
-            // Read the uploaded file as text
+            const fileName = input.name.toLowerCase();
+            if (fileName.endsWith('.geojson') || fileName.endsWith('.json')) {
+                convertGeoJsonToKmz(input);
+            } else if (fileName.endsWith('.shp')) {
+                convertShapefileToKmz(input);
+            } else {
+                alert('Unsupported file type. Please upload a GeoJSON or Shapefile.');
+            }
+        }
+
+        function convertGeoJsonToKmz(file) {
             const reader = new FileReader();
             reader.onload = function(event) {
-                try {
-                    const geoJSON = JSON.parse(event.target.result);
-                    
-                    // Validate GeoJSON structure
-                    if (geoJSON.type !== "FeatureCollection" || !Array.isArray(geoJSON.features)) {
-                        alert("Invalid GeoJSON structure!");
-                        return;
-                    }
+                const geojson = JSON.parse(event.target.result);
 
-                    // Convert the GeoJSON to KML
-                    const kml = geoJSONToKML(geoJSON, labelFieldInput);
+                // Convert GeoJSON to KML
+                const kml = tokml(geojson);
 
-                    // Convert KML to KMZ and trigger download
-                    convertKMLToKMZ(kml);
-                } catch (error) {
-                    alert("Failed to parse GeoJSON file: " + error.message);
-                }
+                // Create KMZ file
+                const zip = new JSZip();
+                zip.file("doc.kml", kml);
+                zip.generateAsync({type: "blob"}).then(function(content) {
+                    const link = document.getElementById('downloadLink');
+                    link.href = URL.createObjectURL(content);
+                    link.download = "geojson_to_kmz.kmz";
+                    link.style.display = 'block';
+                    link.innerHTML = 'Download KMZ';
+                });
             };
-            
+
             reader.readAsText(file);
+        }
+
+        function convertShapefileToKmz(file) {
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                shapefile.open(event.target.result)
+                    .then(source => source.read()
+                    .then(function log(result) {
+                        if (result.done) return;
+
+                        const geojson = result.value;
+                        const kml = tokml(geojson);
+
+                        // Create KMZ file
+                        const zip = new JSZip();
+                        zip.file("doc.kml", kml);
+                        zip.generateAsync({type: "blob"}).then(function(content) {
+                            const link = document.getElementById('downloadLink');
+                            link.href = URL.createObjectURL(content);
+                            link.download = "shapefile_to_kmz.kmz";
+                            link.style.display = 'block';
+                            link.innerHTML = 'Download KMZ';
+                        });
+
+                        return source.read().then(log);
+                    }));
+            };
+
+            reader.readAsArrayBuffer(file);
+        }
+
+        function tokml(geojson) {
+            // Convert GeoJSON to KML string
+            let kml = '<?xml version="1.0" encoding="UTF-8"?>\n';
+            kml += '<kml xmlns="http://www.opengis.net/kml/2.2">\n';
+            kml += '<Document>\n';
+            // Define a style for the KML elements
+            kml += '<Style id="customStyle">\n';
+            kml += '<LineStyle><color>ff0000ff</color><width>2</width></LineStyle>\n';
+            kml += '<PolyStyle><color>660000ff</color></PolyStyle>\n';
+            kml += '</Style>\n';
+            // Loop through GeoJSON features and convert to KML placemarks
+            geojson.features.forEach(feature => {
+                kml += '<Placemark>\n';
+                const name = feature.properties.name || "Unnamed Feature";
+                kml += `<name>${name}</name>\n`;
+                kml += `<description>${JSON.stringify(feature.properties)}</description>\n`;
+                kml += '<styleUrl>#customStyle</styleUrl>\n'; // Apply the custom style
+                kml += geojsonToKmlGeometry(feature.geometry, name);
+                kml += '</Placemark>\n';
+            });
+            kml += '</Document>\n';
+            kml += '</kml>\n';
+            return kml;
+        }
+
+        function geojsonToKmlGeometry(geometry, name) {
+            // Convert GeoJSON geometry to KML geometry string
+            let kmlGeometry = '';
+            switch (geometry.type) {
+                case 'Point':
+                    kmlGeometry += `<Point><coordinates>${geometry.coordinates.join(',')}</coordinates></Point>`;
+                    break;
+                case 'LineString':
+                    kmlGeometry += '<LineString><coordinates>' + geometry.coordinates.map(coord => coord.join(',')).join(' ') + '</coordinates></LineString>';
+                    break;
+                case 'Polygon':
+                    kmlGeometry += '<Polygon><outerBoundaryIs><LinearRing><coordinates>' + geometry.coordinates[0].map(coord => coord.join(',')).join(' ') + '</coordinates></LinearRing></outerBoundaryIs></Polygon>';
+                    break;
+                case 'MultiPolygon':
+                    geometry.coordinates.forEach(polygon => {
+                        kmlGeometry += '<Polygon><outerBoundaryIs><LinearRing><coordinates>' + polygon[0].map(coord => coord.join(',')).join(' ') + '</coordinates></LinearRing></outerBoundaryIs></Polygon>';
+                    });
+                    break;
+                // Add more cases as needed for other geometry types
+            }
+            // Add the name element within the geometry for automatic label display
+            kmlGeometry += `<name>${name}</name>`;
+            return kmlGeometry;
         }
     </script>
 </body>
