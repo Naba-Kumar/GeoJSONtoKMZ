@@ -11,10 +11,10 @@
 </head>
 <body>
     <div class="container mt-5">
-        <h1 class="text-center mb-4">GeoJSON and Shapefile to KMZ Converter</h1>
+        <h1 class="text-center mb-4">GeoJSON to KMZ Converter</h1>
         <div class="form-group">
-            <label for="fileInput">Select a GeoJSON or Shapefile:</label>
-            <input type="file" id="fileInput" class="form-control-file" accept=".geojson,application/json,.shp,.dbf,.prj">
+            <label for="fileInput">Select a GeoJSON:</label>
+            <input type="file" id="fileInput" class="form-control-file" accept=".geojson">
         </div>
         <button onclick="convertFileToKmz()" class="btn btn-primary btn-block">Convert to KMZ</button>
         <a id="downloadLink" class="btn btn-success btn-block mt-3" style="display: none;">Download KMZ</a>
